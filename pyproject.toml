@@ -1,0 +1,59 @@
+#package and tool configurations || dagster and dbt-core not in yet
+
+[project]
+name = "oss-health"
+version = "0.1.0"
+description = "Open-source ecosystem health metrics from GitHub public activity"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "httpx>=0.27",            # HTTP client, sync + async, sane timeouts
+    "tenacity>=9.0",          # retry with backoff — GH Archive 404s and API 403s
+    "pyarrow>=17.0",          # Parquet writer
+    "polars>=1.0",            # dataframe layer for the extract stage
+    "duckdb>=1.1",            # local warehouse for dev
+    "pydantic>=2.8",          # typed models for API payloads
+    "pydantic-settings>=2.4", # env var -> typed config object
+    "structlog>=24.4",        # structured logs (JSON), not print()
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.6",
+    "pytest>=8.3",
+    "pytest-cov>=5.0",
+    "sqlfluff>=3.1",
+    "pre-commit>=3.8",
+    "mypy>=1.11",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/oss_health"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes — unused imports, undefined names
+    "I",        # isort — import ordering
+    "B",        # bugbear — likely-bug patterns
+    "UP",       # pyupgrade — modernise syntax
+    "ANN",      # flake8-annotations — enforce type hints
+    "T20",      # flake8-print — ban stray print()
+]
+ignore = ["ANN101", "ANN102"]  # don't annotate self/cls
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["ANN"]  # tests don't need full annotations
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q"
