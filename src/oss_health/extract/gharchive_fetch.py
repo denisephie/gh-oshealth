@@ -1,0 +1,70 @@
+# 1 - constants and enums
+
+from dataclasses import dataclass, field
+from datetime import datetime
+from enum import StrEnum
+from typing import Any
+
+# kept event_types (frozenset = immutable)
+# not kept: WatchEvent, ForkEvent, GollumEvent, MemberEvent, PublicEvent -> not relevant to metric
+# note: caps notation for constants that shd nvr change
+
+TRACKED_EVENT_TYPES = frozenset(
+    [
+        "PullRequestEvent",
+        "PullRequestReviewEvent",
+        "IssuesEvent",
+        "IssueCommentEvent",
+        "PushEvent",
+        "PullRequestReviewCommentEvent",
+        "CommitCommentEvent",
+        "CreateEvent",
+        "DeleteEvent",
+    ]
+)
+
+ABSOLUTE_THRESHOLD = 10  # fail the hour at this many badly parsed lines
+FRACTION_THRESHOLD = 0.0001  # fail the hour above this rate of failures, 0.01%
+
+"""
+absolute threshold and fraction threshold will be the benchmark of flagging a "FAIL" during line parsing
+condition to be passed shd be if the fail is under the absolute threshold AND fraction threshold  
+"""
+
+CONNECT_TIMEOUT = 10  # secs, wait time for TCP connection to open
+READ_TIMEOUT = 60  # secs, wait time per chunk received
+
+
+class Status(StrEnum):
+    FETCHED = "fetched"  # proceed
+    NOT_YET_PUBLISHED = "not_yet_published"  # retry later
+    MISSING = "missing"  # missing
+    FAILED = "failed"  # retry now
+
+
+@dataclass(frozen=True)
+class HourResult:
+    hour: datetime
+    status: Status
+    lines_read: int
+    events_matched: int
+    lines_malformed: int
+    bytes_downloaded: int
+    duration_seconds: float
+    url: str
+    error: str | None = None  # error can hold str or none
+    events: list[dict[str, Any]] = field(default_factory=list)
+
+    @property
+    def malformed_rate(self) -> float:
+        if self.lines_read == 0:
+            return 0.0
+        else:
+            return self.lines_malformed / self.lines_read
+
+    @property
+    def is_usable(self) -> bool:
+        if self.status is Status.FETCHED:
+            return True
+        else:
+            return False
