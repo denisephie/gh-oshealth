@@ -49,7 +49,7 @@ def test_decompress_single_chunk():
     original = b'{"a":1}\n{"b":2}\n'
     compressed = gzip.compress(original)
     assert b"".join(list(_decompress([compressed]))) == original
-    # noteL b"".join() is to piece the yielded parts back together
+    # note: b"".join() is to piece the yielded parts back together
 
 
 def test_decompress_split_chunks():

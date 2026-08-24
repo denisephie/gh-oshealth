@@ -98,7 +98,7 @@ def _iter_lines(chunks):  # parameter is the chunks arriving (in bytes)
 # 3 - decompresser -> takes compressed gzip chunks, yield decompressed bytes
 
 
-def _decompress(chunks: Iterator[bytes]) -> Iterable[bytes]:
+def _decompress(chunks: Iterable[bytes]) -> Iterator[bytes]:
     decompressor = zlib.decompressobj(
         GZIP_WBITS
     )  # creates a decompression obj for streaming data (process data in sequential chunks)
