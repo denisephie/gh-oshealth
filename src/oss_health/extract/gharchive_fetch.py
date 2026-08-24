@@ -68,3 +68,20 @@ class HourResult:
             return True
         else:
             return False
+
+
+# 2 - line reassembly -> bcs gzip doesn't actually split per line for every chunk
+
+
+def _iter_lines(chunks):  # parameter is the chunks arriving (in bytes)
+    buffer = b""  # byte literal = instance of bytes type
+    for chunk in chunks:
+        buffer += chunk  # add per chunk of bytes into buffer
+        parts = buffer.split(b"\n")  # returns list of b"xx", b"yy", etc
+        buffer = parts[
+            -1
+        ]  # reassignment of buffer to hold the part after \n split that is going to be reassembled in the next iteration
+        for part in parts[:-1]:  # exclusive of the last (reassigned buffer)
+            yield part
+    if buffer:  # if the buffer still contains remaining unfinished chunks, hold it
+        yield buffer
