@@ -4,6 +4,11 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
 from typing import Any
+import zlib  # zlib can compress and decompress
+from collections.abc import (
+    Iterator,
+    Iterable,
+)  # to add type hints to a function that returns an iterator
 
 # kept event_types (frozenset = immutable)
 # not kept: WatchEvent, ForkEvent, GollumEvent, MemberEvent, PublicEvent -> not relevant to metric
@@ -33,6 +38,9 @@ condition to be passed shd be if the fail is under the absolute threshold AND fr
 
 CONNECT_TIMEOUT = 10  # secs, wait time for TCP connection to open
 READ_TIMEOUT = 60  # secs, wait time per chunk received
+GZIP_WBITS = (
+    16 + zlib.MAX_WBITS
+)  # max windowbits = 15, adding 16 makes it 31 that falls into the window of gzip
 
 
 class Status(StrEnum):
@@ -85,3 +93,19 @@ def _iter_lines(chunks):  # parameter is the chunks arriving (in bytes)
             yield part
     if buffer:  # if the buffer still contains remaining unfinished chunks, hold it
         yield buffer
+
+
+# 3 - decompresser -> takes compressed gzip chunks, yield decompressed bytes
+
+
+def _decompress(chunks: Iterator[bytes]) -> Iterable[bytes]:
+    decompressor = zlib.decompressobj(
+        GZIP_WBITS
+    )  # creates a decompression obj for streaming data (process data in sequential chunks)
+    for chunk in chunks:
+        data = decompressor.decompress(chunk)  # decompress to original size
+        if data:
+            yield data  # if hv something pass it along, if no input no need
+    tail = decompressor.flush()  # tells decompressor that no more input is coming, so emit anything held, if not it will keep waiting for data
+    if tail:  # tail not empty (not b"")
+        yield tail  # send out the non-empty
