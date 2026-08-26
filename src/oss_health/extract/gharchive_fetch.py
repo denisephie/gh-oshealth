@@ -1,14 +1,19 @@
 # 1 - constants and enums
 
+import time
+import zlib  # zlib can compress and decompress
+from collections.abc import (
+    Iterable,
+    Iterator,
+)  # to add type hints to a function that returns an iterator
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
 from typing import Any
-import zlib  # zlib can compress and decompress
-from collections.abc import (
-    Iterator,
-    Iterable,
-)  # to add type hints to a function that returns an iterator
+
+import httpx
+
+from oss_health.common.gharchive import hour_url, is_expected_available
 
 # kept event_types (frozenset = immutable)
 # not kept: WatchEvent, ForkEvent, GollumEvent, MemberEvent, PublicEvent -> not relevant to metric
@@ -109,3 +114,32 @@ def _decompress(chunks: Iterable[bytes]) -> Iterator[bytes]:
     tail = decompressor.flush()  # tells decompressor that no more input is coming, so emit anything held, if not it will keep waiting for data
     if tail:  # tail not empty (not b"")
         yield tail  # send out the non-empty
+
+
+# 4 - takes an hr from gharchive, and filter events
+
+
+def fetch_hour(
+    hour: datetime,
+    *,  # now and client to be passed by name
+    now: datetime | None = None,
+    client: httpx.Client | None = None,
+) -> HourResult:
+    started = time.monotonic()  # elapsed time (stopwatch-ish?)
+    if hour.tzinfo is None:
+        raise ValueError("fetch_hour requires a timezone-aware datetime")
+    url = hour_url(hour)
+    if not is_expected_available(hour, now=now):  # for unpublished
+        return HourResult(
+            hour=hour,
+            status=Status.NOT_YET_PUBLISHED,
+            lines_read=0,
+            events_matched=0,
+            lines_malformed=0,
+            bytes_downloaded=0,
+            duration_seconds=time.monotonic() - started,
+            url=url,
+            error=None,
+            events=[],
+        )
+    return None  # temporary, replaced in Sitting 2

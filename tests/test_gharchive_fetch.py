@@ -1,7 +1,9 @@
 # testing for gharchive_fetch
 import gzip
 
-from oss_health.extract.gharchive_fetch import _decompress, _iter_lines
+from oss_health.extract.gharchive_fetch import Status, _decompress, _iter_lines, fetch_hour
+from datetime import UTC, datetime, timedelta
+import pytest
 
 # for _iter_lines
 
@@ -67,3 +69,19 @@ def test_decompress_chained_w_iter_lines():
     chunks = [compressed[:10], compressed[10:25], compressed[25:]]
     result = list(_iter_lines(_decompress(chunks)))
     assert result == [b'{"a":1}', b'{"b":2}', b'{"c":3}']
+
+
+# for fetch_hour
+
+
+def test_too_recent_hour_is_not_yet_published():
+    now = datetime(2024, 1, 15, 12, tzinfo=UTC)
+    hour = now - timedelta(minutes=30)
+    result = fetch_hour(hour, now=now)
+    assert result.status is Status.NOT_YET_PUBLISHED
+    assert result.bytes_downloaded == 0
+
+
+def test_naive_datetime_rejected():
+    with pytest.raises(ValueError):
+        fetch_hour(datetime(2024, 1, 15, 9))
