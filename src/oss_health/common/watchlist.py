@@ -3,7 +3,9 @@
 # matching new events to canonical repo (if name changed) utilizing the id
 
 from __future__ import annotations
+
 from enum import StrEnum
+
 from pydantic import (
     BaseModel,
     Field,
