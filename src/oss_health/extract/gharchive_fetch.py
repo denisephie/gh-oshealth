@@ -11,7 +11,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-import httpx
+import httpx  # iter_bytes, client, timeout, client.stream, raise for status, status code
 
 from oss_health.common.gharchive import hour_url, is_expected_available
 
@@ -109,9 +109,15 @@ def _decompress(chunks: Iterable[bytes]) -> Iterator[bytes]:
         GZIP_WBITS
     )  # creates a decompression obj for streaming data (process data in sequential chunks)
     for chunk in chunks:
-        data = decompressor.decompress(chunk)  # decompress to original size
-        if data:
-            yield data  # if hv something pass it along, if no input no need
+        while chunk:  # keep working on this lump until nothing left (while chunk has bytes in it)
+            data = decompressor.decompress(chunk)  # decompress to original size
+            if data:
+                yield data  # if hv something pass it along, if no input no need
+            if not decompressor.eof:  # if not end of, get back to for loop to fetch
+                break
+            # whole lump is finished
+            chunk = decompressor.unused_data  # unused belongs to next lump
+            decompressor = zlib.decompressobj(GZIP_WBITS)
     tail = decompressor.flush()  # tells decompressor that no more input is coming, so emit anything held, if not it will keep waiting for data
     if tail:  # tail not empty (not b"")
         yield tail  # send out the non-empty
@@ -135,7 +141,7 @@ def fetch_hour(  # inputs
 
     url = hour_url(hour)
 
-    if not is_expected_available(hour, now=now):
+    if not is_expected_available(hour, now=now):  # for the logs that are not yet published
         return HourResult(
             hour=hour,
             status=Status.NOT_YET_PUBLISHED,
@@ -148,15 +154,25 @@ def fetch_hour(  # inputs
             duration_seconds=time.monotonic() - started,
         )
 
-    owns_client = client is None
+    lines_read = 0
+    events_matched = 0
+    lines_malformed = 0
+    bytes_downloaded = 0
+    events: list[dict] = []
+
+    owns_client = (
+        client is None
+    )  # none = client empty = own_client true = nobody handed client, need to make one myself
     if owns_client:
-        client = httpx.Client()
+        client = (
+            httpx.Client()
+        )  # httpx.Client makes web reqs, keeps connection open to server and reconnects
 
     timeout = httpx.Timeout(connect=CONNECT_TIMEOUT, read=READ_TIMEOUT, write=10.0, pool=10.0)
-
+    # connect = server to pick up, read = wait for next chunk, write/pool = send data and wait for free connetion from pool
     try:
-        with client.stream("GET", url, timeout=timeout) as response:
-            if response.status_code == 404:
+        with client.stream("GET", url, timeout=timeout) as response:  # reads header
+            if response.status_code == 404:  # no file
                 return HourResult(
                     hour=hour,
                     status=Status.MISSING,
@@ -168,10 +184,22 @@ def fetch_hour(  # inputs
                     bytes_downloaded=0,
                     duration_seconds=time.monotonic() - started,
                 )
-            response.raise_for_status()
+            response.raise_for_status()  # everything except 2xx
 
+            def counted():  # to count for bytes downloaded BEFORE decompression cs by the time it reaches _decompress, alr inflate
+                nonlocal bytes_downloaded  # for global
+                for chunk in response.iter_bytes():
+                    bytes_downloaded += len(chunk)
+                    yield chunk  # yield for generator
+
+            for line in _iter_lines(_decompress(counted())):
+                # counted() -> compressed chunks counted
+                # _decompress() -> chunk inflated to json
+                # _iter_lines() -> reassembled to complete liens
+                lines_read += 1
+            print(f"lines read={lines_read}, bytes={bytes_downloaded}")
             return None  # placeholder
 
-    finally:
+    finally:  # clean up as try block's way out
         if owns_client:
-            client.close()
+            client.close()  # close a self made client, don't close a borrowed one (next fetched hours will fail since connection pool cut off)

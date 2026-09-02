@@ -1,10 +1,11 @@
 # testing for gharchive_fetch
 import gzip
+from datetime import UTC, datetime, timedelta
+
 import httpx
+import pytest
 
 from oss_health.extract.gharchive_fetch import Status, _decompress, _iter_lines, fetch_hour
-from datetime import UTC, datetime, timedelta
-import pytest
 
 # for _iter_lines
 
@@ -70,6 +71,13 @@ def test_decompress_chained_w_iter_lines():
     chunks = [compressed[:10], compressed[10:25], compressed[25:]]
     result = list(_iter_lines(_decompress(chunks)))
     assert result == [b'{"a":1}', b'{"b":2}', b'{"c":3}']
+
+
+def test_decompress_concatenated_members():
+    a = gzip.compress(b'{"a":1}\n')
+    b = gzip.compress(b'{"b":2}\n')
+    out = b"".join(_decompress([a + b]))
+    assert out == b'{"a":1}\n{"b":2}\n'
 
 
 # for fetch_hour
