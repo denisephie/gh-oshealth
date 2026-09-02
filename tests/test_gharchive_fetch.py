@@ -1,5 +1,6 @@
 # testing for gharchive_fetch
 import gzip
+import httpx
 
 from oss_health.extract.gharchive_fetch import Status, _decompress, _iter_lines, fetch_hour
 from datetime import UTC, datetime, timedelta
@@ -86,3 +87,13 @@ def test_too_recent_hour_is_not_yet_published():
 def test_naive_datetime_rejected():
     with pytest.raises(ValueError):
         fetch_hour(datetime(2024, 1, 15, 9))
+
+
+def test_missing_hour_returns_missing():
+    transport = httpx.MockTransport(lambda request: httpx.Response(404))
+    client = httpx.Client(transport=transport)
+    hour = datetime(2024, 1, 15, 9, tzinfo=UTC)
+    result = fetch_hour(hour, client=client)
+    assert result.status is Status.MISSING
+    assert result.bytes_downloaded == 0
+    client.close()

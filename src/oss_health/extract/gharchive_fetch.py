@@ -1,21 +1,19 @@
 # 1 - constants and enums
 
 import time
-import json
 import zlib  # zlib can compress and decompress
 from collections.abc import (
     Iterable,
     Iterator,
 )  # to add type hints to a function that returns an iterator
 from dataclasses import dataclass, field
-from datetime import datetime, UTC 
+from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
 import httpx
 
 from oss_health.common.gharchive import hour_url, is_expected_available
-from oss_health.common.watchlist import matches 
 
 # kept event_types (frozenset = immutable)
 # not kept: WatchEvent, ForkEvent, GollumEvent, MemberEvent, PublicEvent -> not relevant to metric
@@ -105,6 +103,7 @@ def _iter_lines(chunks):  # parameter is the chunks arriving (in bytes)
 # 3 - decompresser -> takes compressed gzip chunks, yield decompressed bytes
 # decompresses a continuous stream of data per chunk, outputting as they are available without loading everyth all at once
 
+
 def _decompress(chunks: Iterable[bytes]) -> Iterator[bytes]:
     decompressor = zlib.decompressobj(
         GZIP_WBITS
@@ -120,19 +119,20 @@ def _decompress(chunks: Iterable[bytes]) -> Iterator[bytes]:
 
 # 4 - takes an hr from gharchive (input = UTC hour) and hands back HourResult
 # note: we cant js download, load, filter, file too big!
-#HourResult will come back with one of the 4 statuses
+# HourResult will come back with one of the 4 statuses
 
-def fetch_hour( #inputs 
-        hour: datetime,
-        *, # everyth after * which is now and client must be by keyword (passed by name like now = A, client = B)
-        now: datetime | None = None,
-        client: httpx.Client | None = None
+
+def fetch_hour(  # inputs
+    hour: datetime,
+    *,  # everyth after * which is now and client must be by keyword (passed by name like now = A, client = B)
+    now: datetime | None = None,
+    client: httpx.Client | None = None,
 ) -> HourResult:
-    started = time.monotonic() #stopwatch started
+    started = time.monotonic()  # stopwatch started
 
-    if hour.tzinfo is None: 
+    if hour.tzinfo is None:
         raise ValueError("hour must be timezone-aware!")
-    
+
     url = hour_url(hour)
 
     if not is_expected_available(hour, now=now):
@@ -145,6 +145,33 @@ def fetch_hour( #inputs
             events_matched=0,
             lines_malformed=0,
             bytes_downloaded=0,
-            duration_seconds=time.monotonic() - started
+            duration_seconds=time.monotonic() - started,
         )
-    return None # placeholder, test first
+
+    owns_client = client is None
+    if owns_client:
+        client = httpx.Client()
+
+    timeout = httpx.Timeout(connect=CONNECT_TIMEOUT, read=READ_TIMEOUT, write=10.0, pool=10.0)
+
+    try:
+        with client.stream("GET", url, timeout=timeout) as response:
+            if response.status_code == 404:
+                return HourResult(
+                    hour=hour,
+                    status=Status.MISSING,
+                    url=url,
+                    events=[],
+                    lines_read=0,
+                    events_matched=0,
+                    lines_malformed=0,
+                    bytes_downloaded=0,
+                    duration_seconds=time.monotonic() - started,
+                )
+            response.raise_for_status()
+
+            return None  # placeholder
+
+    finally:
+        if owns_client:
+            client.close()
