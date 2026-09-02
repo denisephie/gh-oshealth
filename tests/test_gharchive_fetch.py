@@ -76,10 +76,11 @@ def test_decompress_chained_w_iter_lines():
 
 def test_too_recent_hour_is_not_yet_published():
     now = datetime(2024, 1, 15, 12, tzinfo=UTC)
-    hour = now - timedelta(minutes=30)
+    hour = now - timedelta(hours=1)
     result = fetch_hour(hour, now=now)
     assert result.status is Status.NOT_YET_PUBLISHED
     assert result.bytes_downloaded == 0
+    assert result.events == []
 
 
 def test_naive_datetime_rejected():
